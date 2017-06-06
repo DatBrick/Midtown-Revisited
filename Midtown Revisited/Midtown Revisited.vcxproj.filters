@@ -21,6 +21,9 @@
     <ClInclude Include="Midtown Revisited.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="memHandle.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
