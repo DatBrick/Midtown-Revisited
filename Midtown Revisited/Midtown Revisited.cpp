@@ -511,6 +511,30 @@ public:
     }
 };
 
+auto $mmDirSnd_Init = memHandle(0x51CC50).as<void*(*)(int, bool, int, float, const char*, bool)>();
+
+auto& CurrentAudioDevice = memHandle(0x6B17F2).as<char[200]>();
+
+void* mmDirSnd_Init(int sampleRate, bool enableStero, int a4, float volume, const char* deviceName, bool enable3D)
+{
+    if (deviceName[0] == '\0')
+    {
+        std::strncpy(CurrentAudioDevice, "Primary Sound Driver", std::size(CurrentAudioDevice));
+
+        deviceName = CurrentAudioDevice;
+
+        DebugPrint("[mmDirSnd::Init]: Using Primary Sound Driver");
+    }
+
+    /*
+        TODO:
+
+        - Set sampling rate (see: AudManager::SetBitDepthAndSampleRate(int bitDepth, ulong samplingRate))
+        - Redo SetPrimaryBufferFormat to set sampleSize? (see: DirSnd::SetPrimaryBufferFormat(ulong sampleRate, bool allowStero))
+    */
+    return $mmDirSnd_Init(48000, enableStero, a4, volume, deviceName, enable3D);
+}
+
 auto& __VtResumeSampling = memHandle(0x5E0CC4).as<void(*&)(void)>();
 auto& __VtPauseSampling  = memHandle(0x5E0CD8).as<void(*&)(void)>();
 
@@ -524,6 +548,7 @@ void Initialize()
     CreateHook("AutoDetectCallback",           "Replaces the default AutoDetect method with a much faster one",                0x4AC030, &AutoDetectCallback, HookType::JMP);
     CreateHook("memSafeHeap::Init",            "Adds '-heapsize' parameter that takes a size in megabytes. Defaults to 128MB", 0x4015DD, &memSafeHeap::Init,  HookType::CALL);
     CreateHook("gfxPipeline::gfxWindowCreate", "Custom implementation allowing for more control of the windo.",                0x4A8A90, &gfxWindowCreate,    HookType::JMP);
+    CreateHook("mmDirSnd::Init",               "Fixes no sound issue on startup.",                                             0x51941D, &mmDirSnd_Init,      HookType::CALL);
 
     memHandle(0x4F136E).write_args_vp<std::uint8_t, std::uint8_t>(0x90, 0x90); // Enable custom in windowed mode
 
