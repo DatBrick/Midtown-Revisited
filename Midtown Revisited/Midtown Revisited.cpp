@@ -82,11 +82,31 @@ void CreateHook(const char* name, const char* description, memHandle pHook, memH
     }
 
     DebugPrint(
-        "Created %s %s hook at %X pointing to %X - %s",
+        "Created %s %s hook at 0x%X pointing to 0x%X - %s",
         name,
         HookTypeNames[static_cast<std::size_t>(type)],
         pHook.as<std::uintptr_t>(),
         pDetour.as<std::uintptr_t>(),
+        description
+    );
+}
+
+void CreatePatch(const char* name, const char* description, memHandle pHook, memHandle pPatch, std::size_t size)
+{
+    std::uint32_t dwOldProtect;
+
+    if (pHook.protect(size, PAGE_EXECUTE_READWRITE, &dwOldProtect))
+    {
+        std::memcpy(pHook.as<void*>(), pPatch.as<const void*>(), size);
+
+        pHook.protect(size, dwOldProtect, nullptr);
+    }
+
+    DebugPrint(
+        "Created %s patch at 0x%X of size %zu - %s",
+        name,
+        pHook.as<std::uintptr_t>(),
+        size,
         description
     );
 }
@@ -474,9 +494,11 @@ BOOL __stdcall AutoDetectCallback(GUID *lpGUID, LPSTR lpDriverDescription, LPSTR
         ddsCaps.dwCaps = DDSCAPS_VIDEOMEMORY | DDSCAPS_LOCALVIDMEM;
 
         if (lpDD->GetAvailableVidMem(&ddsCaps, &availableMemory, NULL) != DD_OK)
-            DebugPrint("  Couldn't get video memory, using default");
+        {
+            DebugPrint("Couldn't get video memory, using default");
+        }
 
-        DebugPrint("  Total video memory: %dMB", (availableMemory >> 20));
+        DebugPrint("Total video memory: %dMB", (availableMemory >> 20));
 
         gfxInterface->AvailableMemory = availableMemory;
 
@@ -500,7 +522,7 @@ class memSafeHeap
 {
 public:
     void Init(void *memAllocator, unsigned int heapSize, bool p3, bool p4, bool checkAlloc)
-    {    
+    {
         int heapSizeMB = 128;
         GetArgInt("heapsize", 0, heapSizeMB);
 
@@ -540,8 +562,15 @@ auto& __VtPauseSampling  = memHandle(0x5E0CD8).as<void(*&)(void)>();
 
 void Initialize()
 {
+    if (std::strcmp(memHandle(0x5C28FC).as<const char*>(), "Angel: 3393 / Nov  3 2000 14:34:22") != 0)
+    {
+        DebugPrint("Unknown MM2 Version Detected");
+
+        return;
+    }
+
     DebugPrint("Initialization Begin");
- 
+
     std::clock_t begin = std::clock();
 
     CreateHook("gfxPipeline::SetRes",          "Custom implementation allowing for more control of the window",                0x4A8CE0, &SetRes,             HookType::JMP);
@@ -550,7 +579,7 @@ void Initialize()
     CreateHook("gfxPipeline::gfxWindowCreate", "Custom implementation allowing for more control of the windo.",                0x4A8A90, &gfxWindowCreate,    HookType::JMP);
     CreateHook("mmDirSnd::Init",               "Fixes no sound issue on startup.",                                             0x51941D, &mmDirSnd_Init,      HookType::CALL);
 
-    memHandle(0x4F136E).write_args_vp<std::uint8_t, std::uint8_t>(0x90, 0x90); // Enable custom in windowed mode
+    CreatePatch("sfPointer::Update", "Enables pointer in windowed mode", 0x4F136E, "\x90\x90", 2);
 
     DebugPrint("Initialize Completed in %.2f Seconds", double(std::clock() - begin) / CLOCKS_PER_SEC);
 }
