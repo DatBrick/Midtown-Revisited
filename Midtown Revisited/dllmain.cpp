@@ -2,6 +2,8 @@
 #include "stdafx.h"
 
 #include "Midtown Revisited.h"
+#include "memHandle.h"
+#include <cstring>
 
 BOOL APIENTRY DllMain( HMODULE hModule,
                        DWORD  ul_reason_for_call,

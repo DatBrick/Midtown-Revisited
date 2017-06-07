@@ -1,5 +1,10 @@
 #pragma once
 
+#include <cstdint>
+#include <type_traits>
+#include <vector>
+#include <valarray>
+
 template <typename In, typename Out>
 inline Out pointer_cast(In in)
 {

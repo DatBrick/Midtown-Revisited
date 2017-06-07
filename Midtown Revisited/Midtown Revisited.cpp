@@ -34,15 +34,6 @@
 
 #define ASSERT_SIZE(type, size) static_assert(sizeof(type) == size, "Invalid "#type" size");
 
-template <typename... T>
-inline void DebugPrint(const char* format, T&&... args)
-{
-    char buffer[2048];
-    std::snprintf(buffer, std::size(buffer), format, std::forward<T>(args)...);
-
-    OutputDebugStringA(std::string("[Midtown Revisited] | ").append(buffer).append("\n").c_str());
-}
-
 enum class HookType
 {
     JMP,
@@ -658,13 +649,45 @@ void ProgressRect(int x, int y, int width, int height, unsigned int color)
 auto& __VtResumeSampling = memHandle(0x5E0CC4).as<void(*&)(void)>();
 auto& __VtPauseSampling  = memHandle(0x5E0CD8).as<void(*&)(void)>();
 
+decltype(&DirectInputCreateA) pDirectInputCreate = nullptr;
+
+#pragma comment(linker, "/EXPORT:DirectInputCreateA=_DirectInputCreateA_Impl@16")
+#pragma comment(linker, "/EXPORT:DirectInputCreateW=_DirectInputCreateA_Impl@16")
+extern "C" HRESULT WINAPI DirectInputCreateA_Impl(HINSTANCE hinst, DWORD dwVersion, LPDIRECTINPUTA *ppDI, LPUNKNOWN punkOuter)
+{
+    if (pDirectInputCreate == nullptr)
+    {
+        char szDllFile[MAX_PATH];
+        GetSystemDirectoryA(szDllFile, sizeof(szDllFile));
+        std::strncat(szDllFile, "\\dinput.dll", sizeof(szDllFile));
+
+        if (auto hDinput = LoadLibraryA(szDllFile))
+        {
+            DebugPrint("Loaded real dinput.dll at %X", memHandle(hDinput).as<std::uintptr_t>());
+
+            if (pDirectInputCreate = reinterpret_cast<decltype(&DirectInputCreateA)>(GetProcAddress(hDinput, "DirectInputCreateA")))
+            {
+                DebugPrint("Found DirectInputCreateA at %X", memHandle(pDirectInputCreate).as<std::uintptr_t>());
+            }
+            else
+            {
+                DebugPrint("Failed to find DirectInputCreateA");
+            }
+        }
+        else
+        {
+            DebugPrint("Failed to load real dinput.dll");
+        }
+    }
+
+    return pDirectInputCreate(hinst, dwVersion, ppDI, punkOuter);
+}
+
 void Initialize()
 {
     if (std::strcmp(memHandle(0x5C28FC).as<const char*>(), "Angel: 3393 / Nov  3 2000 14:34:22") != 0)
     {
         DebugPrint("Unknown MM2 Version Detected");
-
-        return;
     }
 
     DebugPrint("Initialization Begin");
@@ -676,7 +699,7 @@ void Initialize()
     CreateHook("memSafeHeap::Init",            "Adds '-heapsize' parameter that takes a size in megabytes. Defaults to 128MB", 0x4015DD, &memSafeHeap::Init,  HookType::CALL);
     CreateHook("gfxPipeline::gfxWindowCreate", "Custom implementation allowing for more control of the windo.",                0x4A8A90, &gfxWindowCreate,    HookType::JMP);
     CreateHook("mmDirSnd::Init",               "Fixes no sound issue on startup.",                                             0x51941D, &mmDirSnd_Init,      HookType::CALL);
-    CreateHook("gfxImage::Scale",              "Fixes loading screen image scaling",                                           0x401C75, &gfxImage::Scale,    HookType::CALL);
+    // CreateHook("gfxImage::Scale",              "Fixes loading screen image scaling",                                           0x401C75, &gfxImage::Scale,    HookType::CALL);
     CreateHook("ProgressRect",                 "Fixes white loading bar in 32-bit display mode.",                              0x401010, &ProgressRect,       HookType::JMP);
 
     CreatePatch("sfPointer::Update", "Enables pointer in windowed mode", 0x4F136E, "\x90\x90", 2);
