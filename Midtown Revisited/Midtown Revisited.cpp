@@ -57,6 +57,78 @@ const char* HookTypeNames[static_cast<std::size_t>(HookType::COUNT)] =
     "CALL",
 };
 
+union ColorARGB
+{
+    struct
+    {
+        byte b, g, r, a;
+    };
+
+    unsigned int color;
+};
+
+template <
+    unsigned int A, unsigned int R, unsigned int G, unsigned int B
+>
+struct ColorFlags
+{
+    enum : unsigned int
+    {
+        // Bit Shifts (created in reverse order)
+        SB = 0,
+        SG = SB + B,
+        SR = SG + G,
+        SA = SR + R,
+
+        // Bit Masks
+        MA = ((1u << A) - 1u),
+        MR = ((1u << R) - 1u),
+        MG = ((1u << G) - 1u),
+        MB = ((1u << B) - 1u),
+
+        // Shifted Bit Masks
+        SMA = MA << SA,
+        SMR = MR << SR,
+        SMG = MG << SG,
+        SMB = MB << SB,
+    };
+};
+
+template <
+    unsigned int OA, unsigned int OR, unsigned int OG, unsigned int OB,
+    unsigned int NA, unsigned int NR, unsigned int NG, unsigned int NB
+>
+inline unsigned int ConvertColor(const unsigned int color)
+{
+    using OF = ColorFlags<OA, OR, OG, OB>;
+    using NF = ColorFlags<NA, NR, NG, NB>;
+
+    return
+        (((color & OF::SMA) >> OF::SA) * NF::MA / (OF::MA ? OF::MA : 1) << NF::SA) |
+        (((color & OF::SMR) >> OF::SR) * NF::MG / (OF::MR ? OF::MR : 1) << NF::SR) |
+        (((color & OF::SMG) >> OF::SG) * NF::MG / (OF::MG ? OF::MG : 1) << NF::SG) |
+        (((color & OF::SMB) >> OF::SB) * NF::MB / (OF::MB ? OF::MB : 1) << NF::SB);
+}
+
+unsigned int GetPixelFormatColor(LPDDPIXELFORMAT lpDDPixelFormat, unsigned int color)
+{
+    switch (lpDDPixelFormat->dwGBitMask)
+    {
+        // 555
+        case 0x3E0:
+            return ConvertColor<0, 8, 8, 8, 0, 5, 5, 5>(color);
+        // 565
+        case 0x7E0:
+            return ConvertColor<0, 8, 8, 8, 0, 5, 6, 5>(color);
+        // 888
+        case 0xFF00:
+            // already in the right format
+            return color;
+    }
+    // unknown format
+    return -1;
+};
+
 void CreateHook(const char* name, const char* description, memHandle pHook, memHandle pDetour, HookType type)
 {
     std::intptr_t RVA = pDetour.as<std::intptr_t>() - pHook.offset(5).as<std::intptr_t>();
@@ -564,6 +636,25 @@ public:
     }
 };
 
+void ProgressRect(int x, int y, int width, int height, unsigned int color)
+{
+
+    DDPIXELFORMAT ddPixelFormat = { sizeof(ddPixelFormat) };
+    lpdsRend->GetPixelFormat(&ddPixelFormat);
+
+    DDBLTFX ddBltFx = { sizeof(ddBltFx) };
+    ddBltFx.dwFillColor = GetPixelFormatColor(&ddPixelFormat, color);
+
+    RECT position = {
+        x,
+        y,
+        x + width,
+        y + height,
+    };
+
+    lpdsRend->Blt(&position, NULL, NULL, DDBLT_COLORFILL | DDBLT_WAIT, &ddBltFx);
+}
+
 auto& __VtResumeSampling = memHandle(0x5E0CC4).as<void(*&)(void)>();
 auto& __VtPauseSampling  = memHandle(0x5E0CD8).as<void(*&)(void)>();
 
@@ -586,6 +677,7 @@ void Initialize()
     CreateHook("gfxPipeline::gfxWindowCreate", "Custom implementation allowing for more control of the windo.",                0x4A8A90, &gfxWindowCreate,    HookType::JMP);
     CreateHook("mmDirSnd::Init",               "Fixes no sound issue on startup.",                                             0x51941D, &mmDirSnd_Init,      HookType::CALL);
     CreateHook("gfxImage::Scale",              "Fixes loading screen image scaling",                                           0x401C75, &gfxImage::Scale,    HookType::CALL);
+    CreateHook("ProgressRect",                 "Fixes white loading bar in 32-bit display mode.",                              0x401010, &ProgressRect,       HookType::JMP);
 
     CreatePatch("sfPointer::Update", "Enables pointer in windowed mode", 0x4F136E, "\x90\x90", 2);
 
