@@ -552,6 +552,18 @@ void* mmDirSnd_Init(int sampleRate, bool enableStero, int a4, float volume, cons
     return $mmDirSnd_Init(48000, enableStero, a4, volume, deviceName, enable3D);
 }
 
+class gfxImage;
+
+auto $gfxImage_Scale = memHandle(0x4AEDC0).as<void(gfxImage::*)(int, int)>();
+
+class gfxImage
+{
+public:
+    void Scale(int width, int height) {
+        (this->*$gfxImage_Scale)(window_iWidth, window_iHeight);
+    }
+};
+
 auto& __VtResumeSampling = memHandle(0x5E0CC4).as<void(*&)(void)>();
 auto& __VtPauseSampling  = memHandle(0x5E0CD8).as<void(*&)(void)>();
 
@@ -573,6 +585,7 @@ void Initialize()
     CreateHook("memSafeHeap::Init",            "Adds '-heapsize' parameter that takes a size in megabytes. Defaults to 128MB", 0x4015DD, &memSafeHeap::Init,  HookType::CALL);
     CreateHook("gfxPipeline::gfxWindowCreate", "Custom implementation allowing for more control of the windo.",                0x4A8A90, &gfxWindowCreate,    HookType::JMP);
     CreateHook("mmDirSnd::Init",               "Fixes no sound issue on startup.",                                             0x51941D, &mmDirSnd_Init,      HookType::CALL);
+    CreateHook("gfxImage::Scale",              "Fixes loading screen image scaling",                                           0x401C75, &gfxImage::Scale,    HookType::CALL);
 
     CreatePatch("sfPointer::Update", "Enables pointer in windowed mode", 0x4F136E, "\x90\x90", 2);
 
