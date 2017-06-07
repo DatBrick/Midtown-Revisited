@@ -211,6 +211,108 @@ public:
     }
 };
 
+constexpr const DWORD ProtectionMatrix[2][2][2] =
+{
+    { // !READ
+        { // !WRITE
+            { // !EXECUTE
+                PAGE_NOACCESS
+            },
+            { // EXECUTE
+                PAGE_EXECUTE
+            },
+        },
+        { // WRITE
+            { // !EXECUTE
+                PAGE_READWRITE
+            },
+            { // EXECUTE
+                PAGE_EXECUTE_READWRITE
+            },
+        },
+    },
+    { // READ
+        { // !WRITE
+            { // !EXECUTE
+                PAGE_READONLY
+            },
+            { // EXECUTE
+                PAGE_EXECUTE_READ
+            },
+        },
+        { // WRITE
+            { // !EXECUTE
+                PAGE_READWRITE
+            },
+            { // EXECUTE
+                PAGE_EXECUTE_READWRITE
+            },
+        },
+    },
+};
+
+class memProtect
+{
+protected:
+    memHandle _handle;
+    std::size_t _size;
+    bool _read;
+    bool _write;
+    bool _execute;
+
+    DWORD _oldProtect;
+
+    bool _protect(DWORD protect, DWORD* oldProtect)
+    {
+        return (VirtualProtect(_handle.as<void*>(), _size, protect, oldProtect) == TRUE);
+    }
+
+public:
+    memProtect(memHandle handle, std::size_t size, bool read, bool write, bool execute)
+        : _handle(handle)
+        , _size(size)
+        , _read(read)
+        , _write(write)
+        , _execute(execute)
+        , _oldProtect(0)
+    {
+        if (!_protect(ProtectionMatrix[read][write][execute], &_oldProtect))
+        {
+            MessageBoxA(NULL, "Failed to protect memory region", "Error", MB_OK);
+        }
+    }
+
+    ~memProtect()
+    {
+        DWORD dwOldProtect;
+        if (!_protect(_oldProtect, &dwOldProtect))
+        {
+            MessageBoxA(NULL, "Failed to revert protect to memory region", "Error", MB_OK);
+        }
+
+        if (_execute)
+        {
+            FlushInstructionCache(GetCurrentProcess(), _handle.as<const void*>(), _size);
+        }
+    }
+
+    void memcpy(memHandle src)
+    {
+        std::memcpy(_handle.as<void*>(), src.as<const void*>(), _size);
+    }
+
+    void memset(int c)
+    {
+        std::memset(_handle.as<void*>(), c, _size);
+    }
+
+    void nop()
+    {
+        memset(0x90);
+    }
+
+};
+
 class memPattern
 {
 protected:

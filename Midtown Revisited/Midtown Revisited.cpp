@@ -47,7 +47,6 @@ enum class HookType
 {
     JMP,
     CALL,
-    PUSH,
 
     COUNT,
 };
@@ -56,7 +55,6 @@ const char* HookTypeNames[static_cast<std::size_t>(HookType::COUNT)] =
 {
     "JMP",
     "CALL",
-    "PUSH"
 };
 
 void CreateHook(const char* name, const char* description, memHandle pHook, memHandle pDetour, HookType type)
@@ -67,17 +65,18 @@ void CreateHook(const char* name, const char* description, memHandle pHook, memH
     {
         case HookType::JMP:
         {
-            pHook.write_args_vp<std::uint8_t, std::intptr_t>(0xE9, RVA);
+            unsigned char buffer[5] = { 0xE9 };
+            reinterpret_cast<int&>(buffer[1]) = RVA;
+
+            memProtect(pHook, sizeof(buffer), true, true, true).memcpy(buffer);
         } break;
 
         case HookType::CALL:
         {
-            pHook.write_args_vp<std::uint8_t, std::intptr_t>(0xE8, RVA);
-        } break;
+            unsigned char buffer[5] = { 0xE8 };
+            reinterpret_cast<int&>(buffer[1]) = RVA;
 
-        case HookType::PUSH:
-        {
-            pHook.write_args_vp<std::uint8_t, std::uintptr_t>(0x68, pDetour.as<std::uintptr_t>());
+            memProtect(pHook, sizeof(buffer), true, true, true).memcpy(buffer);
         } break;
     }
 
@@ -91,21 +90,14 @@ void CreateHook(const char* name, const char* description, memHandle pHook, memH
     );
 }
 
-void CreatePatch(const char* name, const char* description, memHandle pHook, memHandle pPatch, std::size_t size)
+void CreatePatch(const char* name, const char* description, memHandle dest, memHandle src, std::size_t size)
 {
-    std::uint32_t dwOldProtect;
-
-    if (pHook.protect(size, PAGE_EXECUTE_READWRITE, &dwOldProtect))
-    {
-        std::memcpy(pHook.as<void*>(), pPatch.as<const void*>(), size);
-
-        pHook.protect(size, dwOldProtect, nullptr);
-    }
+    memProtect(dest, size, true, true, true).memcpy(src);
 
     DebugPrint(
         "Created %s patch at 0x%X of size %zu - %s",
         name,
-        pHook.as<std::uintptr_t>(),
+        dest.as<std::uintptr_t>(),
         size,
         description
     );
@@ -155,6 +147,9 @@ struct gfxInterface
 };
 
 ASSERT_SIZE(gfxInterface, 624);
+
+// AGEHook<(0x[0-9A-F]{6})>::Type<(.+)> (.+);
+// auto& $3 = memHandle($1).as<$2&>();\n
 
 auto& sm_EnableSetLOD = memHandle(0x684D34).as<bool&>();
 auto& sm_Allow32 = memHandle(0x684D36).as<bool&>();
